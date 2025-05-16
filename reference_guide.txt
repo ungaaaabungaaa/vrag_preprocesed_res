@@ -1,0 +1,51 @@
+Reference Guide for Manual Extraction
+Images to Extract
+
+Figure 1 - Save as: figure_1.png
+Figure 2 - Save as: figure_2.png
+Figure 3 - Save as: figure_3.png
+Figure 4 - Save as: figure_4.png
+Fig. 1 - Save as: fig_1.png
+Fig. 2 - Save as: fig_2.png
+Image 1 - Save as: image_1.png
+Image 2 - Save as: image_2.png
+
+Tables to Extract
+
+Table 1 - Save as: table_1.csv
+Table 2 - Save as: table_2.csv
+Table 3 - Save as: table_3.csv
+
+Instructions:
+
+Extract each image from the PDF and save it with the filename format shown above
+Extract data from each table and save as a CSV file with the filename format shown above
+Place image files in the 'data/images' folder
+Place CSV table files in the 'data/tables' folder
+
+Extraction Tips:
+
+For images: use a screenshot tool or PDF viewer's "Save image as" function
+For tables: manually copy data to a spreadsheet and save as CSV, or use a tool like Tabula
+Ensure image filenames match exactly the format above (case-sensitive)
+Make sure CSV files have headers in the first row
+Double-check that all images and tables are correctly extracted before running the application
+
+Example CSV Format:
+A properly formatted CSV for Table 1 might look like:
+Column1,Column2,Column3
+1,A,10.5
+2,B,20.3
+3,C,30.7
+4,D,40.2
+Example Image Naming:
+If your PDF contains "Figure 3" on page 5, you would:
+
+Extract that image
+Save it as "figure_3.png"
+Place it in the 'data/images' folder
+
+Reference Location:
+This reference extraction was generated based on text analysis of your PDF.
+If you notice additional images or tables that aren't listed here, add them
+following the same naming convention.

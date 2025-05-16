@@ -1,0 +1,9 @@
+Welcome to the sample document for testing the VRAG bot.
+The bar chart shown in [figure_1.png] displays the monthly sales data of three departments: Electronics, Clothing, and Grocery.
+Refer to [table_1.csv] for exact sales values per month.
+In [Image2.jpg], you’ll find a diagram of the solar system. Note the relative sizes of the planets and their distances from the sun.
+[table_2.csv] provides the mass and orbital period of each planet in the solar system.
+A snapshot of a busy market is shown in [figure_1.png]. Observe the number of people, stalls, and visible products.
+Compare the population density data in [table_3.csv] with what you observe in [figure_1.png].
+Fun fact: Jupiter is the largest planet in our solar system, and it's clearly visible as the biggest sphere in [Image2.jpg].
+Make sure to identify and describe the trend in sales between March and June using [figure_1.png] and [table_1.csv].
