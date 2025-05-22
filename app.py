@@ -10,14 +10,8 @@ import requests  # For Ollama API calls
 import logging
 import torch
 
-# Simplified device setup for CPU only
-def setup_torch_device():
-    device = torch.device('cpu')
-    print(f"Using device: {device} (CPU)")
-    return device
-
-# Initialize device
-DEVICE = setup_torch_device()
+# Force CPU as the only device
+DEVICE = torch.device("cpu")
 
 
 # Set up logging
@@ -36,18 +30,17 @@ OLLAMA_API_URL = "http://localhost:11434/api/generate"  # Default Ollama API end
 @st.cache_resource
 def load_models():
     try:
-        # Text embedding model
-        embedding_model = SentenceTransformer(EMBEDDING_MODEL)
-        embedding_model.to(DEVICE)  # Explicitly move to CPU
+        # Load sentence transformer
+        embedding_model = SentenceTransformer("all-MiniLM-L6-v2")
+        embedding_model.to(DEVICE)
 
-        # Image captioning model
+        # Load BLIP processor and model
         processor = BlipProcessor.from_pretrained("Salesforce/blip-image-captioning-base")
-
-        # Load BLIP model and move to CPU
         blip_model = BlipForConditionalGeneration.from_pretrained("Salesforce/blip-image-captioning-base")
-        blip_model = blip_model.to(DEVICE)  # Explicitly move model to CPU
+        blip_model = blip_model.to(DEVICE)
 
         return embedding_model, processor, blip_model
+
     except Exception as e:
         st.error(f"Error loading models: {str(e)}")
         logger.error(f"Error loading models: {str(e)}", exc_info=True)
@@ -257,8 +250,17 @@ def index_text_documents(collection, embedding_model):
         if filename.lower().endswith('.txt'):
             file_path = os.path.join(TEXT_FOLDER, filename)
             try:
-                with open(file_path, 'r', encoding='utf-8') as f:
-                    content = f.read()
+                # Try UTF-8 first, then fall back to other encodings if that fails
+                try:
+                    with open(file_path, 'r', encoding='utf-8') as f:
+                        content = f.read()
+                except UnicodeDecodeError:
+                    try:
+                        with open(file_path, 'r', encoding='cp1252') as f:  # Windows-1252
+                            content = f.read()
+                    except UnicodeDecodeError:
+                        with open(file_path, 'r', encoding='iso-8859-1') as f:  # Latin-1
+                            content = f.read()
 
                 # Skip empty files
                 if not content.strip():
