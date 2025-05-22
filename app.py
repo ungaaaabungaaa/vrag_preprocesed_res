@@ -8,6 +8,9 @@ from sentence_transformers import SentenceTransformer
 from transformers import BlipProcessor, BlipForConditionalGeneration
 import requests  # For Ollama API calls
 import logging
+import torch
+def get_torch_device():
+    return "cuda" if torch.cuda.is_available() else "cpu"
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -19,18 +22,21 @@ IMAGE_FOLDER = "data/images"
 TABLE_FOLDER = "data/tables"
 DB_PATH = "data/chroma_db"
 EMBEDDING_MODEL = "all-MiniLM-L6-v2"
-OLLAMA_MODEL = "llama2:latest"  # or "mistral", "gemma", etc. - any model you've pulled with Ollama
+OLLAMA_MODEL = "mistral:7b"  # Default to mistral 7b
 OLLAMA_API_URL = "http://localhost:11434/api/generate"  # Default Ollama API endpoint
 
 # Initialize models (with caching)
 @st.cache_resource
 def load_models():
-    # Text embedding model
-    embedding_model = SentenceTransformer(EMBEDDING_MODEL)
+    # Get the device first
+    device = get_torch_device()
     
+    # Text embedding model
+    embedding_model = SentenceTransformer(EMBEDDING_MODEL, device=device)
+
     # Image captioning model
     processor = BlipProcessor.from_pretrained("Salesforce/blip-image-captioning-base")
-    blip_model = BlipForConditionalGeneration.from_pretrained("Salesforce/blip-image-captioning-base")
+    blip_model = BlipForConditionalGeneration.from_pretrained("Salesforce/blip-image-captioning-base").to(device)
     
     return embedding_model, processor, blip_model
 
@@ -55,6 +61,8 @@ def init_db():
     except Exception as e:
         st.error(f"Error initializing ChromaDB: {str(e)}")
         raise e
+
+
 
 # Function to call Ollama API
 def generate_with_ollama(prompt, model=OLLAMA_MODEL, max_tokens=500):
@@ -191,6 +199,19 @@ def ensure_folders_exist():
     
     return existing, missing
 
+# Function to clear database
+def clear_database(collection):
+    try:
+        # Get all document IDs and delete them
+        all_docs = collection.get()
+        if all_docs and 'ids' in all_docs and all_docs['ids']:
+            collection.delete(ids=all_docs['ids'])
+            return len(all_docs['ids'])
+        return 0
+    except Exception as e:
+        st.error(f"Error clearing database: {str(e)}")
+        return 0
+
 # Index documents to populate the database
 def index_documents(collection, embedding_model, processor, blip_model):
     st.info("Starting document indexing...")
@@ -199,13 +220,6 @@ def index_documents(collection, embedding_model, processor, blip_model):
     existing, created = ensure_folders_exist()
     if created:
         st.info(f"Created missing folders: {', '.join(created)}")
-    
-    # Clear existing collection
-    try:
-        collection.delete(where={})
-        st.info("Cleared existing collection")
-    except Exception as e:
-        st.error(f"Error clearing collection: {str(e)}")
     
     # Count successful indexes
     text_count = index_text_documents(collection, embedding_model)
@@ -227,11 +241,15 @@ def index_text_documents(collection, embedding_model):
         return count
         
     for filename in files:
-        if filename.endswith('.txt'):
+        if filename.lower().endswith('.txt'):
             file_path = os.path.join(TEXT_FOLDER, filename)
             try:
                 with open(file_path, 'r', encoding='utf-8') as f:
                     content = f.read()
+                
+                # Skip empty files
+                if not content.strip():
+                    continue
                 
                 # Split content into chunks (simple approach)
                 chunks = [content[i:i+1000] for i in range(0, len(content), 1000)]
@@ -241,20 +259,25 @@ def index_text_documents(collection, embedding_model):
                     if not chunk.strip():
                         continue
                     
-                    embedding = embedding_model.encode(chunk).tolist()
-                    
-                    # Add to collection
-                    collection.add(
-                        documents=[chunk],
-                        embeddings=[embedding],
-                        metadatas=[{
-                            'type': 'text',
-                            'source': filename,
-                            'chunk': i
-                        }],
-                        ids=[f"txt_{filename}_{i}"]
-                    )
-                    count += 1
+                    try:
+                        embedding = embedding_model.encode(chunk).tolist()
+                        
+                        # Add to collection
+                        collection.add(
+                            documents=[chunk],
+                            embeddings=[embedding],
+                            metadatas=[{
+                                'type': 'text',
+                                'source': filename,
+                                'chunk': i
+                            }],
+                            ids=[f"txt_{filename}_{i}"]
+                        )
+                        count += 1
+                    except Exception as e:
+                        st.warning(f"Error processing chunk {i} of {filename}: {str(e)}")
+                        continue
+                        
             except Exception as e:
                 st.error(f"Error processing {filename}: {str(e)}")
     
@@ -273,7 +296,7 @@ def index_images(collection, embedding_model, processor, blip_model):
         return count
         
     for filename in files:
-        if filename.lower().endswith(('.png', '.jpg', '.jpeg')):
+        if filename.lower().endswith(('.png', '.jpg', '.jpeg', '.bmp', '.gif')):
             file_path = os.path.join(IMAGE_FOLDER, filename)
             try:
                 # Generate caption
@@ -315,7 +338,7 @@ def index_tables(collection, embedding_model):
         return count
         
     for filename in files:
-        if filename.endswith('.csv'):
+        if filename.lower().endswith('.csv'):
             file_path = os.path.join(TABLE_FOLDER, filename)
             try:
                 # Read table
@@ -355,7 +378,7 @@ def handle_file_uploads():
     st.header("Upload Documents")
     
     # Text file upload
-    text_files = st.file_uploader("Upload Text Files (.txt)", type=["txt"], accept_multiple_files=True)
+    text_files = st.file_uploader("Upload Text Files", type=["txt"], accept_multiple_files=True)
     if text_files:
         for uploaded_file in text_files:
             save_path = os.path.join(TEXT_FOLDER, uploaded_file.name)
@@ -364,7 +387,7 @@ def handle_file_uploads():
         st.success(f"Saved {len(text_files)} text files")
     
     # Image file upload
-    image_files = st.file_uploader("Upload Images (.jpg, .png)", type=["jpg", "jpeg", "png"], accept_multiple_files=True)
+    image_files = st.file_uploader("Upload Images", type=["jpg", "jpeg", "png", "bmp", "gif"], accept_multiple_files=True)
     if image_files:
         for uploaded_file in image_files:
             save_path = os.path.join(IMAGE_FOLDER, uploaded_file.name)
@@ -373,7 +396,7 @@ def handle_file_uploads():
         st.success(f"Saved {len(image_files)} image files")
     
     # Table file upload
-    table_files = st.file_uploader("Upload Tables (.csv)", type=["csv"], accept_multiple_files=True)
+    table_files = st.file_uploader("Upload Tables", type=["csv"], accept_multiple_files=True)
     if table_files:
         for uploaded_file in table_files:
             save_path = os.path.join(TABLE_FOLDER, uploaded_file.name)
@@ -394,14 +417,32 @@ def main():
         # Sidebar for document management
         with st.sidebar:
             st.header("Document Management")
+            
             # Add file upload functionality to sidebar
             handle_file_uploads()
             
-            if st.button("Re-index Documents"):
-                with st.spinner("Indexing documents..."):
-                    text_count, image_count, table_count = index_documents(collection, embedding_model, processor, blip_model)
-                    
-                st.success(f"Documents re-indexed! Added {text_count} text chunks, {image_count} images, and {table_count} tables.")
+            st.markdown("---")
+            
+            # Database management buttons
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                if st.button("Re-index Documents", type="primary"):
+                    with st.spinner("Indexing documents..."):
+                        try:
+                            text_count, image_count, table_count = index_documents(collection, embedding_model, processor, blip_model)
+                            st.success(f"Documents indexed! Added {text_count} text chunks, {image_count} images, and {table_count} tables.")
+                        except Exception as e:
+                            st.error(f"Error during indexing: {str(e)}")
+            
+            with col2:
+                if st.button("Clear Database", type="secondary"):
+                    with st.spinner("Clearing database..."):
+                        try:
+                            cleared_count = clear_database(collection)
+                            st.success(f"Database cleared! Removed {cleared_count} documents.")
+                        except Exception as e:
+                            st.error(f"Error clearing database: {str(e)}")
             
             # Check and display DB status
             try:
@@ -411,23 +452,18 @@ def main():
             except Exception as e:
                 st.error(f"Error getting DB count: {str(e)}")
             
-            # Ollama model selection
+            # Ollama status check
             st.markdown("### Ollama Settings")
-            selected_model = st.selectbox(
-                "Select Model",
-                ["llama2", "mistral", "gemma", "llama2-uncensored"],
-                index=0
-            )
-            global OLLAMA_MODEL
-            OLLAMA_MODEL = f"{selected_model}:latest"
+            st.write(f"Current model: {OLLAMA_MODEL}")
             
-            # Status check for Ollama
             try:
                 response = requests.get("http://localhost:11434/api/tags")
                 if response.status_code == 200:
                     available_models = [model["name"] for model in response.json()["models"]]
                     st.success(f"Ollama status: Connected")
-                    st.write("Available models: " + ", ".join(available_models))
+                    with st.expander("Available models"):
+                        for model in available_models:
+                            st.write(f"• {model}")
                 else:
                     st.warning("Ollama status: Connected but can't fetch models")
             except requests.exceptions.RequestException:
@@ -446,8 +482,9 @@ def main():
         st.error(f"Critical error in application: {str(e)}")
         st.info("Troubleshooting tips:")
         st.write("1. Make sure all dependencies are installed: `pip install -r requirements.txt`")
-        st.write("2. Check that Ollama is running: `ollama start`")
-        st.write("3. Verify that you have the necessary disk space for the embeddings model")
+        st.write("2. Check that Ollama is running: `ollama serve`")
+        st.write("3. Make sure you have pulled the mistral model: `ollama pull mistral:7b`")
+        st.write("4. Verify that you have the necessary disk space for the embeddings model")
 
 if __name__ == "__main__":
     main()
