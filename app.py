@@ -10,9 +10,7 @@ import requests  # For Ollama API calls
 import logging
 import torch
 
-# Force CPU as the only device
-DEVICE = torch.device("cpu")
-torch.set_default_device('cpu')  # Ensure all tensors are created on CPU
+
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -24,8 +22,8 @@ IMAGE_FOLDER = "data/images"
 TABLE_FOLDER = "data/tables"
 DB_PATH = "data/chroma_db"
 EMBEDDING_MODEL = "all-MiniLM-L6-v2"
-OLLAMA_MODEL = "mistral:7b"  # Default to mistral 7b
-OLLAMA_API_URL = "http://localhost:11434/api/generate"  # Default Ollama API endpoint
+OLLAMA_MODEL = "mistral:7b" 
+OLLAMA_API_URL = "http://localhost:11434/api/generate"
 
 @st.cache_resource
 def load_models():
@@ -80,7 +78,7 @@ def generate_with_ollama(prompt, model=OLLAMA_MODEL, max_tokens=500):
     }
 
     try:
-        response = requests.post(OLLAMA_API_URL, json=payload, timeout=30)
+        response = requests.post(OLLAMA_API_URL, json=payload, timeout=60)
         response.raise_for_status()
         return response.json()["response"]
     except requests.exceptions.RequestException as e:
@@ -463,7 +461,7 @@ def main():
             col1, col2 = st.columns(2)
 
             with col1:
-                if st.button("Re-index Documents", type="primary"):
+                if st.button("Re-index", type="primary"):
                     with st.spinner("Indexing documents..."):
                         try:
                             text_count, image_count, table_count = index_documents(collection, embedding_model, processor, blip_model)
@@ -487,23 +485,6 @@ def main():
                 st.write(f"Documents in DB: {count}")
             except Exception as e:
                 st.error(f"Error getting DB count: {str(e)}")
-
-            # Ollama status check
-            st.markdown("### Ollama Settings")
-            st.write(f"Current model: {OLLAMA_MODEL}")
-
-            ollama_connected, available_models = check_ollama_status()
-            if ollama_connected:
-                st.success("Ollama status: Connected")
-                if available_models:
-                    with st.expander("Available models"):
-                        for model in available_models:
-                            st.write(f"• {model}")
-                else:
-                    st.warning("No models found. Please pull a model first.")
-            else:
-                st.error("Ollama status: Not connected. Make sure Ollama is running.")
-                st.info("To start Ollama, run: `ollama serve`")
 
         # Main chat interface
         query = st.text_input("Ask your question:", key="query")
