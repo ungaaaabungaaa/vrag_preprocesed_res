@@ -100,3 +100,10 @@ Troubleshooting
 Ollama Connection Issues: Ensure Ollama is running with ollama serve
 Image Loading Errors: Check image paths and formats (PNG, JPG, etc.)
 Table Processing Errors: Verify CSV format and encoding
+
+bash
+rm -rf .venv                            
+python3.11 -m venv .venv  
+source .venv/bin/activate
+pip install --upgrade pip
+pip install -r requirements.txt

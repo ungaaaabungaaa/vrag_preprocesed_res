@@ -12,7 +12,7 @@ import torch
 
 # Force CPU as the only device
 DEVICE = torch.device("cpu")
-
+torch.set_default_device('cpu')  # Ensure all tensors are created on CPU
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -30,14 +30,14 @@ OLLAMA_API_URL = "http://localhost:11434/api/generate"  # Default Ollama API end
 @st.cache_resource
 def load_models():
     try:
-        # Load sentence transformer
-        embedding_model = SentenceTransformer("all-MiniLM-L6-v2")
-        embedding_model.to(DEVICE)
-
-        # Load BLIP processor and model
+        # Load sentence transformer with CPU explicitly
+        embedding_model = SentenceTransformer("all-MiniLM-L6-v2", device='cpu')
+        
+        # Load BLIP processor and model with CPU explicitly
         processor = BlipProcessor.from_pretrained("Salesforce/blip-image-captioning-base")
-        blip_model = BlipForConditionalGeneration.from_pretrained("Salesforce/blip-image-captioning-base")
-        blip_model = blip_model.to(DEVICE)
+        blip_model = BlipForConditionalGeneration.from_pretrained("Salesforce/blip-image-captioning-base", torch_dtype=torch.float32)
+        blip_model = blip_model.to('cpu')
+        blip_model.eval()
 
         return embedding_model, processor, blip_model
 
@@ -316,10 +316,9 @@ def index_images(collection, embedding_model, processor, blip_model):
             try:
                 # Generate caption
                 image = Image.open(file_path).convert('RGB')
-                inputs = processor(image, return_tensors="pt")
-
-                # Move inputs to the same device as the model
-                inputs = {k: v.to(DEVICE) for k, v in inputs.items()}
+                
+                # Explicitly use CPU for processing
+                inputs = processor(image, return_tensors="pt").to('cpu')
 
                 with torch.no_grad():
                     outputs = blip_model.generate(**inputs)
@@ -444,7 +443,7 @@ def main():
     st.write("This chatbot can process and reference text, images, and tables from your documents.")
 
     # Display device information
-    st.info(f"Running on: {DEVICE}")
+    st.info(f"Running on: CPU (CUDA explicitly disabled)")
 
     # Initialize everything
     try:
@@ -538,4 +537,7 @@ def main():
 
 
 if __name__ == "__main__":
+    # Set environment variables to force CPU usage
+    os.environ['CUDA_VISIBLE_DEVICES'] = '-1'  # Hide any CUDA devices
+    os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'   # Reduce TensorFlow logging
     main()
